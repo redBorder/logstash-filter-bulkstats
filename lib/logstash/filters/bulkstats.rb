@@ -3,6 +3,9 @@ require "logstash/filters/base"
 require "logstash/namespace"
 require "json" 
 require "time"
+require 'rubygems/package'
+require 'zlib'
+require 'fileutils'
 
 # This bulkstats filter will map the data coming with keys
 # defined in a directory in a certains way.
@@ -11,25 +14,56 @@ require "time"
 class LogStash::Filters::Bulkstats < LogStash::Filters::Base
 
   config_name "bulkstats"
-  config :directory, :validate => :string, :default => "/opt/rb/share/bulkstats", :required => true
+  config :bulkstats_columns_tar_gz, :validate => :string, :default => "/opt/rb/share/bulkstats.tar.gz", :required => false
 
   public
-  def build_columns_from_dir(dir="/opt/rb/share/bulkstats")
+  def build_columns_from_dir(destination)
     bulkstats_columns = {}
-    Dir["#{dir}/*"].each do |file|
+    Dir["#{destination}/*"].each do |file|
       bulkstats_columns[file.split("/").last] = JSON.load(File.read(file))
     end
     bulkstats_columns
   end
+  def extract_bulkstats_tar_gz(destination, tar_gz_archive)   
+    tar_longlink = '././@LongLink'
+    FileUtils.rm_rf(destination)
+    FileUtils.mkdir_p(destination)
+    Gem::Package::TarReader.new( Zlib::GzipReader.open tar_gz_archive ) do |tar|
+    dest = nil
+    tar.each do |entry|
+      if entry.full_name == tar_longlink
+        dest = File.join destination, entry.read.strip
+        next
+      end
+      dest ||= File.join destination, entry.full_name
+      if entry.directory?
+        File.delete dest if File.file? dest
+        FileUtils.mkdir_p dest, :mode => entry.header.mode, :verbose => false
+      elsif entry.file?
+        FileUtils.rm_rf dest if File.directory? dest
+        File.open dest, "wb" do |f|
+          f.print entry.read
+        end
+        FileUtils.chmod entry.header.mode, dest, :verbose => false
+      elsif entry.header.typeflag == '2' #Symlink!
+        File.symlink entry.header.linkname, dest
+      end
+      dest = nil
+    end
+    end
+  end
 
   def register
     # Add instance variables
-    @bulkstats_columns = build_columns_from_dir(@directory)
+    destination = "/tmp/bulkstats-#{Time.now.to_i}"
+    extract_bulkstats_tar_gz(destination, @bulkstats_columns_tar_gz)    
+    @bulkstats_columns = build_columns_from_dir(destination)
+    #FileUtils.rm_f(destination)
   end # def register
 
   def get_key(schema_id,ref_id,index)
     if @bulkstats_columns && @bulkstats_columns[schema_id] && @bulkstats_columns[schema_id][ref_id] && @bulkstats_columns[schema_id][ref_id][index]
-      "bulkstats_" + @bulkstats_columns[schema_id][ref_id][index].to_s
+      "bulkstats_" + @bulkstats_columns[schema_id][ref_id][index].to_s.downcase
     else
       nil
     end
@@ -43,13 +77,17 @@ class LogStash::Filters::Bulkstats < LogStash::Filters::Base
     ref_id            = message[1]
 
     message.each_with_index do |value, index|
-      e = LogStash::Event.new("timestamp" => timestamp.to_i,
-                              "monitor" => get_key(schema_id,ref_id,index),
-                              "value" => value,
-                              "type" => "bulkstats",
-                              "sensor_uuid" => path[-3]
-                             )
-     yield e
+      key = get_key(schema_id,ref_id,index)
+      if (key)
+        e = LogStash::Event.new("timestamp" => timestamp.to_i,
+                                "monitor" => key,
+                                "value" => value,
+                                "type" => "bulkstats",
+                                "sensor_uuid" => path[-3],
+                                "bulkstats" => value
+                               )
+       yield e
+      end
     end
 
     @logger.debug? && @logger.debug("Message is now: #{event.get("message")}")
