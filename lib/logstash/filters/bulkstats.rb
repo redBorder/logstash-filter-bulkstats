@@ -22,6 +22,7 @@ class LogStash::Filters::Bulkstats < LogStash::Filters::Base
     Dir["#{destination}/*"].each do |file|
       bulkstats_columns[file.split("/").last] = JSON.load(File.read(file))
     end
+    FileUtils.rm_rf(destination)
     bulkstats_columns
   end
   def extract_bulkstats_tar_gz(destination, tar_gz_archive)   
@@ -58,7 +59,6 @@ class LogStash::Filters::Bulkstats < LogStash::Filters::Base
       destination = "/tmp/bulkstats-#{Time.now.to_i}"
       extract_bulkstats_tar_gz(destination, @bulkstats_columns_tar_gz)
       build_columns_from_dir(destination)
-      FileUtils.rm_rf(destination) 
   end
 
   def register
@@ -80,7 +80,6 @@ class LogStash::Filters::Bulkstats < LogStash::Filters::Base
     path              = (event.get("path") || "").split("/")
     schema_id         = path[-2]
     ref_id            = message[1]
-
     message.each_with_index do |value, index|
       key = get_key(schema_id,ref_id,index)
       if (key)
