@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'logstash-filter-bulkstats'
-  s.version         = '1.0.3'
+  s.version         = '1.0.4'
   s.licenses = ['Apache License (2.0)']
   s.summary = "This bulkstats filter get a message from bulkstats cisco machine and parse it"
   s.description     = "we can do this later"
