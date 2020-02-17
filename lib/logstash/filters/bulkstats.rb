@@ -53,12 +53,17 @@ class LogStash::Filters::Bulkstats < LogStash::Filters::Base
     end
   end
 
+  def get_bulkstats_columns
+      return {} if !File.exist?("#{@bulkstats_columns_tar_gz}")
+      destination = "/tmp/bulkstats-#{Time.now.to_i}"
+      extract_bulkstats_tar_gz(destination, @bulkstats_columns_tar_gz)
+      build_columns_from_dir(destination)
+      FileUtils.rm_rf(destination) 
+  end
+
   def register
     # Add instance variables
-    destination = "/tmp/bulkstats-#{Time.now.to_i}"
-    extract_bulkstats_tar_gz(destination, @bulkstats_columns_tar_gz)    
-    @bulkstats_columns = build_columns_from_dir(destination)
-    #FileUtils.rm_f(destination)
+    @bulkstats_columns = get_bulkstats_columns
   end # def register
 
   def get_key(schema_id,ref_id,index)
