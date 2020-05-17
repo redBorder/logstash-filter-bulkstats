@@ -87,7 +87,7 @@ class LogStash::Filters::Bulkstats < LogStash::Filters::Base
                                 "monitor" => key,
                                 "value" => value,
                                 "type" => "bulkstats",
-                                "sensor_uuid" => path[-3],
+                                "sensor_uuid" => [path[-3][0..7], path[-3][8..11],path[-3][12..15],path[-3][16..19],path[-3][20..-1]].join("-"),
                                 "bulkstats" => value
                                )
        yield e
